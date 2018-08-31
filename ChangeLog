@@ -39,6 +39,8 @@ Features
    * Add new crypto primitives from RFC 7539: stream cipher Chacha20, one-time
      authenticator Poly1305 and AEAD construct Chacha20-Poly1305. Contributed
      by Daniel King.
+   * Add support for DTLS-SRTP as defined in RFC 5764. Based on contribution done
+     by Johan Pascal in #361.
    * Add support for CHACHA20-POLY1305 ciphersuites from RFC 7905.
    * Add platform support for the Haiku OS. (https://www.haiku-os.org).
      Contributed by Augustin Cavalier.

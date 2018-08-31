@@ -153,6 +153,9 @@ int main( void )
 #define DFL_BADMAC_LIMIT        -1
 #define DFL_EXTENDED_MS         -1
 #define DFL_ETM                 -1
+#define DFL_USE_SRTP            0
+#define DFL_SRTP_FORCE_PROFILE  0
+#define DFL_SRTP_SUPPORT_MKI    0
 
 #define LONG_RESPONSE "<p>01-blah-blah-blah-blah-blah-blah-blah-blah-blah\r\n" \
     "02-blah-blah-blah-blah-blah-blah-blah-blah-blah-blah-blah-blah-blah\r\n"  \
@@ -302,6 +305,22 @@ int main( void )
 #define USAGE_DTLS ""
 #endif
 
+#if defined(MBEDTLS_SSL_DTLS_SRTP)
+#define USAGE_SRTP \
+    "    use_srtp=%%d         default: 0 (disabled)\n" \
+    "    srtp_force_profile=%%d  default: all enabled\n"   \
+    "                        available profiles:\n"       \
+    "                        1 - SRTP_AES128_CM_HMAC_SHA1_80\n"  \
+    "                        2 - SRTP_AES128_CM_HMAC_SHA1_32\n"  \
+    "                        3 - SRTP_NULL_HMAC_SHA1_80\n"       \
+    "                        4 - SRTP_NULL_HMAC_SHA1_32\n"       \
+    "    support_mki=%%d     default: 0 (not supported)\n"
+#else
+#define USAGE_SRTP ""
+#endif
+
+
+
 #if defined(MBEDTLS_SSL_EXTENDED_MASTER_SECRET)
 #define USAGE_EMS \
     "    extended_ms=0/1     default: (library default: on)\n"
@@ -357,6 +376,7 @@ int main( void )
     "    read_timeout=%%d     default: 0 ms (no timeout)\n"    \
     "\n"                                                    \
     USAGE_DTLS                                              \
+    USAGE_SRTP                                              \
     USAGE_COOKIES                                           \
     USAGE_ANTI_REPLAY                                       \
     USAGE_BADMAC_LIMIT                                      \
@@ -471,6 +491,9 @@ struct options
     uint32_t hs_to_min;         /* Initial value of DTLS handshake timer    */
     uint32_t hs_to_max;         /* Max value of DTLS handshake timer        */
     int badmac_limit;           /* Limit of records with bad MAC            */
+    int use_srtp;               /* Support SRTP                             */
+    int force_srtp_profile;     /* SRTP protection profile to use or all    */
+    int support_mki;            /* The dtls mki mki support                 */
 } opt;
 
 static void my_debug( void *ctx, int level,
@@ -704,7 +727,8 @@ int sni_callback( void *p_info, mbedtls_ssl_context *ssl,
 
 #endif /* SNI_OPTION */
 
-#if defined(MBEDTLS_KEY_EXCHANGE__SOME__PSK_ENABLED)
+#if defined(MBEDTLS_KEY_EXCHANGE__SOME__PSK_ENABLED) || \
+    defined(MBEDTLS_SSL_DTLS_SRTP)
 
 #define HEX2NUM( c )                    \
         if( c >= '0' && c <= '9' )      \
@@ -743,6 +767,10 @@ int unhexify( unsigned char *output, const char *input, size_t *olen )
 
     return( 0 );
 }
+
+#endif /* MBEDTLS_KEY_EXCHANGE__SOME__PSK_ENABLED || MBEDTLS_SSL_DTLS_SRTP */
+
+#if defined(MBEDTLS_KEY_EXCHANGE__SOME__PSK_ENABLED)
 
 typedef struct _psk_entry psk_entry;
 
@@ -1341,6 +1369,9 @@ int main( int argc, char *argv[] )
     opt.badmac_limit        = DFL_BADMAC_LIMIT;
     opt.extended_ms         = DFL_EXTENDED_MS;
     opt.etm                 = DFL_ETM;
+    opt.use_srtp            = DFL_USE_SRTP;
+    opt.force_srtp_profile  = DFL_SRTP_FORCE_PROFILE;
+    opt.support_mki         = DFL_SRTP_SUPPORT_MKI;
 
     for( i = 1; i < argc; i++ )
     {
@@ -1687,6 +1718,18 @@ int main( int argc, char *argv[] )
         else if( strcmp( p, "sni" ) == 0 )
         {
             opt.sni = q;
+        }
+        else if( strcmp( p, "use_srtp" ) == 0 )
+        {
+            opt.use_srtp = atoi ( q );
+        }
+        else if( strcmp( p, "srtp_force_profile" ) == 0 )
+        {
+            opt.force_srtp_profile = atoi( q );
+        }
+        else if( strcmp( p, "support_mki" ) == 0 )
+        {
+            opt.support_mki = atoi( q );
         }
         else
             goto usage;
@@ -2162,8 +2205,50 @@ int main( int argc, char *argv[] )
     {
         mbedtls_printf( " failed\n  ! mbedtls_ssl_conf_max_frag_len returned %d\n\n", ret );
         goto exit;
-    };
+    }
 #endif
+
+#if defined(MBEDTLS_SSL_DTLS_SRTP)
+    if( opt.use_srtp != DFL_USE_SRTP )
+    {
+        if( opt.force_srtp_profile != DFL_SRTP_FORCE_PROFILE )
+        {
+            const mbedtls_ssl_srtp_profile forced_profile[] = { opt.force_srtp_profile };
+            ret = mbedtls_ssl_conf_dtls_srtp_protection_profiles( &conf,
+                                                                  forced_profile,
+                                                                  sizeof( forced_profile ) / sizeof( mbedtls_ssl_srtp_profile ) );
+        }
+        else
+        {
+            const mbedtls_ssl_srtp_profile default_profiles[] = { MBEDTLS_SRTP_AES128_CM_HMAC_SHA1_80,
+                                                                  MBEDTLS_SRTP_AES128_CM_HMAC_SHA1_32,
+                                                                  MBEDTLS_SRTP_NULL_HMAC_SHA1_80,
+                                                                  MBEDTLS_SRTP_NULL_HMAC_SHA1_32 };
+            ret = mbedtls_ssl_conf_dtls_srtp_protection_profiles( &conf,
+                                                                  default_profiles,
+                                                                  sizeof( default_profiles ) / sizeof( mbedtls_ssl_srtp_profile ) );
+        }
+
+        if( ret != 0 )
+        {
+            mbedtls_printf( " failed\n  ! mbedtls_ssl_conf_dtls_srtp_protection_profiles returned %d\n\n", ret );
+            goto exit;
+        }
+
+        mbedtls_ssl_conf_srtp_mki_value_supported( &conf,
+                                                   opt.support_mki ?
+                                                   MBEDTLS_SSL_DTLS_SRTP_MKI_SUPPORTED :
+                                                MBEDTLS_SSL_DTLS_SRTP_MKI_UNSUPPORTED );
+
+    }
+    else if( opt.force_srtp_profile != DFL_SRTP_FORCE_PROFILE )
+    {
+        mbedtls_printf( " failed\n  ! must enable use_srtp to force srtp profile\n\n" );
+        goto exit;
+    }
+#endif /* MBEDTLS_SSL_DTLS_SRTP */
+
+
 
 #if defined(MBEDTLS_SSL_TRUNCATED_HMAC)
     if( opt.trunc_hmac != DFL_TRUNC_HMAC )

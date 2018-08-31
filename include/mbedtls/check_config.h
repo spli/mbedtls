@@ -668,6 +668,10 @@
 #error "MBEDTLS_HAVE_INT32 and MBEDTLS_HAVE_INT64 cannot be defined simultaneously"
 #endif /* MBEDTLS_HAVE_INT32 && MBEDTLS_HAVE_INT64 */
 
+#if defined(MBEDTLS_SSL_DTLS_SRTP) && ( !defined(MBEDTLS_SSL_PROTO_DTLS) )
+#error "MBEDTLS_SSL_DTLS_SRTP defined, but not all prerequisites"
+#endif
+
 #if ( defined(MBEDTLS_HAVE_INT32) || defined(MBEDTLS_HAVE_INT64) ) && \
     defined(MBEDTLS_HAVE_ASM)
 #error "MBEDTLS_HAVE_INT32/MBEDTLS_HAVE_INT64 and MBEDTLS_HAVE_ASM cannot be defined simultaneously"
